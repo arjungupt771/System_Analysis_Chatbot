@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Sophos AI Control Panel</title>
+</head>
+<body>
+    <h2>Install Software</h2>
+    <form action="/install-software" method="post">
+        <input type="text" name="software_key" placeholder="Enter software key" required>
+        <button type="submit">Install</button>
+    </form>
+
+    <h2>Chat with AI</h2>
+    <form action="/chat" method="post">
+        <input type="text" name="prompt" placeholder="Your message" required><br>
+        <textarea name="pdf_context" placeholder="Optional PDF context"></textarea><br>
+        <button type="submit">Ask</button>
+    </form>
+
+    <h2>Upload PDF</h2>
+    <form action="/upload-pdf" method="post" enctype="multipart/form-data">
+        <input type="file" name="pdf_file" accept=".pdf" required>
+        <button type="submit">Upload</button>
+    </form>
+
+
+    {% if pdf_text_preview %}
+    <h3>PDF Text Preview:</h3>
+    <pre>{{ pdf_text_preview }}</pre>
+    {% endif %}
+
+
+    {% if message %}
+    <p><strong>{{ message }}</strong></p>
+    {% endif %}
+
+    {% if response %}
+    <h3>AI Response:</h3>
+    <p>{{ response }}</p>
+    {% endif %}
+</body>
+</html>

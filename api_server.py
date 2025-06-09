@@ -2,13 +2,11 @@ from fastapi import FastAPI, Form, Request, HTTPException, UploadFile, File
 import tempfile
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
-from app import (
-    scan_apps_and_storage,
-    get_hardware_details,
-    download_and_install_software,
-    extract_text_from_pdf,
-    model,
-)
+from utils.installexe import download_and_install_software
+from utils.pdf import extract_text_from_pdf
+from utils.software_details import get_hardware_details, scan_apps_and_storage
+from utils.model import model
+
 import uvicorn
 
 app = FastAPI()

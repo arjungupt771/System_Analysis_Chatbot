@@ -31,7 +31,7 @@ def init_db():
     
 
 def delete_chat(chat_id):
-    conn = sqlite3.connect("DB_NAME")
+    conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     cursor.execute("DELETE FROM chats WHERE chat_id = ?", (chat_id,))
     conn.commit()

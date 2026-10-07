@@ -3,7 +3,7 @@ import platform
 import re
 import subprocess
 import tempfile
-
+import time
 import requests
 import streamlit as st
 
@@ -111,26 +111,35 @@ def is_software_installed(
     """
     Check whether software is installed on Windows.
 
-    Uses both:
-    1. Windows installation path, when provided.
+    Detection methods:
+    1. Explicit installation path.
     2. Windows uninstall registry entries.
+
+    Returns:
+        bool: True when the software is detected, otherwise False.
     """
 
     if not _is_windows():
         return False
 
     # ---------------------------------
-    # Fast path: explicit installation path
+    # 1. Explicit installation path
     # ---------------------------------
-    if path_check and os.path.exists(path_check):
-        return True
+
+    if path_check:
+        try:
+            if os.path.exists(path_check):
+                return True
+        except OSError:
+            pass
 
     if not software_name:
         return False
 
     # ---------------------------------
-    # Windows Registry detection
+    # 2. Windows Registry detection
     # ---------------------------------
+
     try:
         import winreg
 
@@ -159,9 +168,11 @@ def is_software_installed(
                     registry_path,
                 ) as uninstall_key:
 
-                    for index in range(
-                        winreg.QueryInfoKey(uninstall_key)[0]
-                    ):
+                    subkey_count = winreg.QueryInfoKey(
+                        uninstall_key
+                    )[0]
+
+                    for index in range(subkey_count):
 
                         try:
                             subkey_name = winreg.EnumKey(
@@ -175,22 +186,22 @@ def is_software_installed(
                             ) as software_key:
 
                                 try:
-                                    display_name = winreg.QueryValueEx(
-                                        software_key,
-                                        "DisplayName",
-                                    )[0]
-
+                                    display_name = (
+                                        winreg.QueryValueEx(
+                                            software_key,
+                                            "DisplayName",
+                                        )[0]
+                                    )
                                 except FileNotFoundError:
                                     continue
 
-                                if (
-                                    isinstance(
-                                        display_name,
-                                        str,
-                                    )
-                                    and target
-                                    in display_name.lower()
+                                if not isinstance(
+                                    display_name,
+                                    str,
                                 ):
+                                    continue
+
+                                if target in display_name.lower():
                                     return True
 
                         except (
@@ -206,11 +217,32 @@ def is_software_installed(
                 continue
 
     except ImportError:
-        # winreg exists only on Windows.
+        # winreg is unavailable on non-Windows systems.
         return False
 
     return False
 
+def verify_software_installation(
+    software_name,
+    install_path=None,
+    verification_delay=2,
+):
+    """
+    Verify that software is actually installed after an installer finishes.
+
+    Checks the expected installation path and Windows uninstall registry.
+    """
+
+    if not _is_windows():
+        return False
+
+    if verification_delay > 0:
+        time.sleep(verification_delay)
+
+    return is_software_installed(
+        path_check=install_path,
+        software_name=software_name,
+    )
 
 def download_and_install_software(software_key):
     """
@@ -332,11 +364,23 @@ def download_and_install_software(software_key):
                 timeout=600,
             )
 
-            st.success(
-                f"✅ {software_name} installed successfully!"
+            st.info( "🔎 Verifying the installation...")
+
+            if verify_software_installation(
+                software_name=software_name,
+                install_path=install_path,
+            ):
+                st.success(
+                    f"✅ {software_name} installed successfully!"
+                )
+                return True
+
+            st.warning(
+                f"⚠️ The installer completed, but "
+                f"{software_name} could not be verified."
             )
 
-            return True
+            return False
 
         except subprocess.TimeoutExpired:
             st.error(

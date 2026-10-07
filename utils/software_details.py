@@ -5,6 +5,8 @@ import platform
 import shutil
 import subprocess
 
+
+
 try:
     import psutil
 except ImportError:
@@ -15,16 +17,27 @@ except ImportError:
     )
     print("Install it with: pip install psutil")
 
-
 def get_appx_packages():
     """Get Windows Store/AppX applications using PowerShell."""
+
+    powershell_script = r"""
+$packages = Get-AppxPackage -AllUsers -ErrorAction SilentlyContinue |
+    Select-Object `
+        Name,
+        PackageFullName,
+        Version,
+        Publisher,
+        InstallLocation
+
+$packages | ConvertTo-Json -Depth 3
+"""
+
     try:
         result = subprocess.run(
             [
                 "powershell",
                 "-Command",
-                "Get-AppxPackage -AllUsers | "
-                "Select Name, InstallLocation | ConvertTo-Json",
+                powershell_script,
             ],
             capture_output=True,
             text=True,
@@ -32,24 +45,80 @@ def get_appx_packages():
         )
 
         if result.returncode != 0:
-            print(f"PowerShell error while getting AppX packages: {result.stderr}")
+            print(
+                "PowerShell error while getting AppX packages: "
+                f"{result.stderr}"
+            )
             return []
 
         if not result.stdout.strip():
             return []
 
-        data = json.loads(result.stdout)
+        parsed_output = json.loads(result.stdout)
 
-        if isinstance(data, dict):
-            return [data]
+        if isinstance(parsed_output, dict):
+            parsed_output = [parsed_output]
 
-        if isinstance(data, list):
-            return data
+        if not isinstance(parsed_output, list):
+            print(
+                "Warning: Unexpected AppX data type: "
+                f"{type(parsed_output)}"
+            )
+            return []
 
+        applications = []
+
+        for package in parsed_output:
+
+            if not isinstance(package, dict):
+                continue
+
+            name = package.get("Name")
+
+            if not name:
+                continue
+
+            applications.append(
+                {
+                    "Name": name,
+                    "Version": package.get(
+                        "Version",
+                        "Unknown",
+                    ),
+                    "Publisher": package.get(
+                        "Publisher",
+                        "Unknown",
+                    ),
+                    "InstallLocation": package.get(
+                        "InstallLocation",
+                        "",
+                    ),
+                    "PackageFullName": package.get(
+                        "PackageFullName",
+                        "",
+                    ),
+                    "Source": "Microsoft Store",
+                }
+            )
+
+        return applications
+
+    except json.JSONDecodeError as e:
+        print(
+            f"Error parsing AppX package data: {e}"
+        )
         return []
 
-    except (json.JSONDecodeError, OSError, Exception) as e:
-        print(f"Error getting AppX packages: {e}")
+    except OSError as e:
+        print(
+            f"Could not execute PowerShell: {e}"
+        )
+        return []
+
+    except Exception as e:
+        print(
+            f"Unexpected error in get_appx_packages: {e}"
+        )
         return []
 
 
@@ -65,17 +134,32 @@ $keys = @(
 
 $apps = foreach ($key in $keys) {
     Get-ItemProperty $key -ErrorAction SilentlyContinue |
-    Where-Object { $_.DisplayName } |
-    Select-Object DisplayName, InstallLocation
+    Where-Object {
+        $_.DisplayName
+    } |
+    Select-Object `
+        DisplayName,
+        DisplayVersion,
+        Publisher,
+        InstallLocation,
+        InstallDate,
+        UninstallString,
+        QuietUninstallString
 }
 
-$uniqueApps = $apps | Sort-Object DisplayName -Unique
-$uniqueApps | ConvertTo-Json
+$uniqueApps = $apps |
+    Sort-Object DisplayName, DisplayVersion -Unique
+
+$uniqueApps | ConvertTo-Json -Depth 3
 """
 
     try:
         result = subprocess.run(
-            ["powershell", "-Command", powershell_script],
+            [
+                "powershell",
+                "-Command",
+                powershell_script,
+            ],
             capture_output=True,
             text=True,
             check=False,
@@ -91,30 +175,80 @@ $uniqueApps | ConvertTo-Json
         if not result.stdout.strip():
             return []
 
-        parsed_output = json.loads(result.stdout)
+        parsed_output = json.loads(
+            result.stdout
+        )
 
         if isinstance(parsed_output, dict):
-            return [parsed_output]
+            parsed_output = [parsed_output]
 
-        if isinstance(parsed_output, list):
-            return parsed_output
+        if not isinstance(parsed_output, list):
+            print(
+                "Warning: Unexpected data type from PowerShell JSON: "
+                f"{type(parsed_output)}"
+            )
+            return []
 
+        applications = []
+
+        for app in parsed_output:
+
+            if not isinstance(app, dict):
+                continue
+
+            name = app.get(
+                "DisplayName",
+                "Unknown",
+            )
+
+            applications.append(
+                {
+                    "Name": name,
+                    "Version": app.get(
+                        "DisplayVersion",
+                        "Unknown",
+                    ),
+                    "Publisher": app.get(
+                        "Publisher",
+                        "Unknown",
+                    ),
+                    "InstallLocation": app.get(
+                        "InstallLocation",
+                        "",
+                    ),
+                    "InstallDate": app.get(
+                        "InstallDate",
+                        "Unknown",
+                    ),
+                    "UninstallString": app.get(
+                        "UninstallString",
+                        "",
+                    ),
+                    "QuietUninstallString": app.get(
+                        "QuietUninstallString",
+                        "",
+                    ),
+                }
+            )
+
+        return applications
+
+    except json.JSONDecodeError as e:
         print(
-            "Warning: Unexpected data type from PowerShell JSON: "
-            f"{type(parsed_output)}"
+            f"Error parsing Windows application data: {e}"
         )
         return []
 
-    except json.JSONDecodeError as e:
-        print(f"Error parsing Windows application data: {e}")
-        return []
-
     except OSError as e:
-        print(f"Could not execute PowerShell: {e}")
+        print(
+            f"Could not execute PowerShell: {e}"
+        )
         return []
 
     except Exception as e:
-        print(f"Unexpected error in get_win32_apps: {e}")
+        print(
+            f"Unexpected error in get_win32_apps: {e}"
+        )
         return []
 
 
@@ -166,45 +300,55 @@ def scan_apps_and_storage():
         path = app.get("InstallLocation")
         name = app.get("Name", "Unknown")
 
+        size = 0
+        last_updated = "N/A"
+
         if path and os.path.exists(path):
             size = get_folder_size(path)
             last_updated = get_last_updated_date(path)
-
             system_total += size
 
-            system_list.append(
-                {
-                    "App": name,
-                    "Size(MB)": f"{size / 1e6:.2f}",
-                    "Last Updated": last_updated,
-                }
-            )
+        system_list.append(
+            {
+                "App": name,
+                "Version": app.get("Version", "Unknown"),
+                "Publisher": app.get("Publisher", "Unknown"),
+                "Source": app.get("Source", "Microsoft Store"),
+                "Size(MB)": f"{size / 1e6:.2f}" if size else "N/A",
+                "Last Updated": last_updated,
+                "InstallLocation": path or "N/A",
+            }
+        )
 
     # Traditional Windows applications
     for app in downloaded_apps:
         path = app.get("InstallLocation")
-        name = app.get("DisplayName", "Unknown")
+        name = app.get("Name", "Unknown")
 
-        if name and path and os.path.exists(path):
+        size = 0
+        last_updated = "N/A"
+
+        if path and os.path.exists(path):
             size = get_folder_size(path)
             downloaded_total += size
             last_updated = get_last_updated_date(path)
 
-            downloaded_list.append(
-                {
-                    "App": name,
-                    "Size(MB)": f"{size / 1e6:.2f}",
-                    "Last Updated": last_updated,
-                }
-            )
-        else:
-            downloaded_list.append(
-                {
-                    "App": name,
-                    "Size(MB)": "N/A",
-                    "Last Updated": "N/A",
-                }
-            )
+        downloaded_list.append(
+            {
+                "App": name,
+                "Version": app.get("Version", "Unknown"),
+                "Publisher": app.get("Publisher", "Unknown"),
+                "Source": "Windows Registry",
+                "Size(MB)": f"{size / 1e6:.2f}" if size else "N/A",
+                "Last Updated": last_updated,
+                "InstallLocation": path or "N/A",
+                "UninstallString": app.get("UninstallString", ""),
+                "QuietUninstallString": app.get(
+                    "QuietUninstallString",
+                    "",
+                ),
+            }
+        )
 
     return (
         system_list,

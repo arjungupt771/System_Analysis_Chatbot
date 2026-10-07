@@ -1,4 +1,4 @@
-# Environment variables
+# Environment / secrets
 .env
 .env.*
 !.env.example
@@ -13,11 +13,18 @@ venv/
 .venv/
 env/
 
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local database
+*.db
+*.sqlite
+*.sqlite3
+
 # Streamlit
 .streamlit/secrets.toml
-
-# Database
-*.db
 
 # IDE
 .vscode/
@@ -26,3 +33,6 @@ env/
 # OS
 .DS_Store
 Thumbs.db
+
+# Logs
+*.log

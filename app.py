@@ -1,11 +1,13 @@
 import os
 import streamlit as st
-
+import tempfile
+import pytz
 from datetime import datetime
 from typing import List, Dict, Tuple
 
+from utils import software_health
 from utils.model import model
-
+from utils.software_health import analyze_software_health
 from Software_Catalog import SOFTWARE_CATALOG, get_software_info
 
 from chat_db import (
@@ -15,6 +17,10 @@ from chat_db import (
     get_all_chat_ids,
     delete_chat,
 )
+
+from utils.command_router import route_command
+from utils.tool_executor import execute_tool
+from utils.safety import get_action_policy
 
 from utils.pdf import (
     extract_text_from_pdf,
@@ -43,6 +49,11 @@ from utils.software_details import (
 from utils.speech import (
     speak,
     listen_from_mic,
+)
+
+from utils.system_diagnosis import (
+    build_system_snapshot,
+    build_diagnosis_prompt,
 )
 
 from streamlit.components.v1 import html
@@ -86,6 +97,9 @@ def main():
 
     if "spoken_text_from_mic" not in st.session_state:
         st.session_state.spoken_text_from_mic = ""
+
+    if "pending_command" not in st.session_state:
+        st.session_state.pending_command = None
 
     # -----------------------------
     # Current date/time
@@ -517,9 +531,56 @@ def main():
 
             hardware_details = get_hardware_details()
 
+            software_health = analyze_software_health(
+                system_apps=system_list,
+                downloaded_apps=downloaded_list,
+            )
+
+            diagnosis = None
+            try:
+                system_snapshot = build_system_snapshot(
+                    hardware_details = hardware_details,
+                    system_apps=system_list,
+                    downloaded_apps=downloaded_list,
+                    system_total=system_total,
+                    downloaded_total=downloaded_total,
+                )
+
+                diagnosis_prompt = build_diagnosis_prompt(
+                    system_snapshot
+                )
+
+                if current_gemini_session:
+
+                    with st.spinner(
+                        "AI is analyzing your windows system..."
+                    ):
+                        diagnosis_response = (
+                            current_gemini_session.send_message(
+                                diagnosis_prompt
+                            )
+                        )
+
+                    diagnosis = diagnosis_response.text
+
+            except Exception as e:
+                st.warning(
+                    f"AI System diagnosis unavailable: {e}"
+                )
+
+
         st.header(
             "📊 System & Software Scan Results"
         )
+
+        if diagnosis:
+            st.header("🧠 AI System Diagnosis")
+            st.markdown(diagnosis)
+
+            add_message_to_current_chat(
+                "assistant",
+                diagnosis,
+            )
 
         # -----------------------------
         # Hardware information
@@ -761,6 +822,70 @@ def main():
         # -----------------------------
         # Software summary
         # -----------------------------
+
+        st.subheader("🩺 Software Health")
+        health_summary = software_health.get("summary", {})
+        col1, col2, col3, col4 = st.columns(4)
+
+        with col1:
+            st.metric(
+                "Total Apps",
+            health_summary.get("total_applications", 0),
+            )
+
+        with col2:
+            st.metric(
+                "Store Apps",
+                health_summary.get(
+                    "microsoft_store_applications",
+                    0,
+                    ),
+                    )
+
+        with col3:
+            st.metric(
+                "Win32 Apps",
+                health_summary.get(
+                    "win32_applications",
+                    0,
+                    ),
+                    )
+
+        with col4:
+            st.metric(
+                "Findings",
+                health_summary.get("findings", 0),
+                )
+
+        findings = software_health.get("findings", [])
+
+        if findings:
+            for finding in findings:
+                severity = finding.get("severity", "info").upper()
+
+                if severity == "MEDIUM":
+                    st.warning(
+                        f"⚠️ {finding.get('message', 'Software issue detected.')}")
+
+                elif severity == "LOW":
+                    st.info(
+                        f"ℹ️ {finding.get('message', 'Software inventory issue detected.')}"
+                        )
+
+                elif severity == "HIGH":
+                    st.error(
+                        f"🚨 {finding.get('message', 'High-severity software issue detected.')}"
+                        )
+
+                else:
+                    st.caption(
+                        f"• {finding.get('message', 'Informational finding.')}"
+                        )
+        else:
+            st.success(
+                "✅ No software inventory issues were detected."
+                )
+
         st.markdown("---")
 
         st.subheader("Software Summary")
@@ -790,57 +915,209 @@ def main():
     # -----------------------------
     # Text Chat
     # -----------------------------
-    prompt = st.chat_input(
-        "What is your question?"
-    )
+    # ---------------------------------------------------------
+    # PENDING COMMAND APPROVAL
+    # ---------------------------------------------------------
+    pending_command = st.session_state.get("pending_command")
+    if pending_command:
+        policy = get_action_policy(pending_command.intent.value)
+        st.warning(
+            f"⚠️ Confirmation required\n\n"
+            f"**Action:** {policy.description}\n\n"
+            f"**Risk:** `{policy.risk.value.upper()}`\n\n"
+            f"**Command:** `{pending_command.command}`"
+        )
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button(
+                "✅ Approve",
+                key="approve_pending_command",
+                use_container_width=True,
+            ):
+                execution = execute_tool(
+                    pending_command,
+                    confirmed=True,
+                )
+                if execution.success:
+                    st.success(
+                        "✅ Command executed successfully."
+                    )
+                else:
+                    st.error(
+                        f"❌ Command failed: {execution.error}"
+                    )
+                st.session_state.pending_command = None
+                st.rerun()
+
+        with col2:
+            if st.button(
+                "❌ Cancel",
+                key="cancel_pending_command",
+                use_container_width=True,
+            ):
+                st.session_state.pending_command = None
+                st.rerun()
+
+    prompt = st.chat_input("What is your question?")
 
     if prompt and current_gemini_session:
-
-        software_name = parse_software_name(
-            prompt
-        )
-
-        # -------------------------
-        # Text command: Install
-        # -------------------------
-        if (
-            software_name
-            and software_name in SOFTWARE_CATALOG
-        ):
-
-            download_and_install_software(
-                software_name
+        routed_command = route_command(prompt)
+        # ---------------------------------------------------------
+        # COMMAND ROUTER
+        # ---------------------------------------------------------
+        if routed_command.intent.value == "software_install":
+            execution = execute_tool(
+                routed_command,
+                confirmed=False,
             )
+            if execution.requires_confirmation:
+                st.session_state.pending_command = routed_command
+                st.rerun()
+            elif execution.success:
+                st.success("✅ Software installation completed.")
+            else:
+                st.error(f"❌ {execution.error}")
+        elif routed_command.intent.value == "process_analysis":
+            execution = execute_tool(routed_command)
+            if not execution.success:
+                st.error(f"❌ {execution.error}")
+            elif isinstance(execution.result, dict) and not execution.result.get("success", False):
+                st.error(
+                    f"❌ {execution.result.get('error', 'Process analysis failed.')}"
+                )
+            else:
+                result = execution.result
+                st.subheader("🖥️ Windows Process Analysis")
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric(
+                        "Total Processes",
+                        result.get("total_processes", 0),
+                    )
+                with col2:
+                    st.metric(
+                        "Showing",
+                        result.get("showing", 0),
+                    )
+                with col3:
+                    st.metric(
+                        "Sorted By",
+                        result.get("sort_by", "cpu").upper(),
+                    )
+                processes = result.get("processes", [])
+                if processes:
+                    st.dataframe(
+                        processes,
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+                else:
+                    st.info("No process information was available.")
+        elif routed_command.intent.value == "startup_analysis":
+            execution = execute_tool(routed_command)
+            if not execution.success:
+                st.error(f"❌ {execution.error}")
+            elif isinstance(execution.result, dict) and not execution.result.get("success", False):
+                st.error(
+                    f"❌ {execution.result.get('error', 'Startup analysis failed.')}"
+                )
+            else:
+                result = execution.result
+                st.subheader("🚀 Windows Startup Analysis")
+                st.metric(
+                    "Startup Items",
+                    result.get("total_startup_items", 0),
+                )
+                startup_items = result.get("startup_items", [])
+                if startup_items:
+                    st.dataframe(
+                        startup_items,
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+                else:
+                    st.info("No startup applications were found.")
+        elif routed_command.intent.value == "storage_analysis":
+            execution = execute_tool(routed_command)
+            if not execution.success:
+                st.error(f"❌ {execution.error}")
+            elif isinstance(execution.result, dict) and not execution.result.get("success", False):
+                st.error(
+                    f"❌ {execution.result.get('error', 'Storage analysis failed.')}"
+                )
+            else:
+                result = execution.result
+                st.subheader("💾 Windows Storage Analysis")
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric(
+                        "Files Scanned",
+                        result.get("scanned_files", 0),
+                    )
+                with col2:
+                    st.metric(
+                        "Files Skipped",
+                        result.get("skipped_files", 0),
+                    )
+                with col3:
+                    st.metric(
+                        "Showing",
+                        result.get("showing", 0),
+                    )
+                st.caption(
+                    f"Root: `{result.get('root', 'Unknown')}` "
+                    f"| Scan depth: {result.get('max_depth', 'N/A')}"
+                )
 
-        elif prompt.lower().startswith(
-            "install "
-        ):
+                files = result.get("files", [])
 
-            st.warning(
-                "Sorry, I don't recognize that software yet."
+                if files:
+                    st.dataframe(
+                        files,
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+                else:
+                    st.info("No large files were found in the scanned area.")
+        elif routed_command.intent.value == "open_url":
+            execution = execute_tool(routed_command)
+            if not execution.success:
+                st.error(f"❌ {execution.error}")
+            elif isinstance(execution.result, dict) and not execution.result.get("success", False):
+                st.error(
+                    f"❌ {execution.result.get('error', 'Failed to open URL.') }"
+                )
+            else:
+                st.success("🌐 URL opened successfully.")
+        elif routed_command.intent.value == "launch_application":
+            execution = execute_tool(
+                routed_command,
+                confirmed=False,
             )
-
-        # -------------------------
-        # Normal AI chat
-        # -------------------------
+            if execution.requires_confirmation:
+                st.session_state.pending_command = routed_command
+                st.rerun()
+            elif not execution.success:
+                st.error(f"❌ {execution.error}")
+            elif isinstance(execution.result, dict) and not execution.result.get("success", False):
+                st.error(
+                    f"❌ {execution.result.get('error', 'Failed to launch application.') }"
+                )
+            else:
+                st.success("🚀 Application launched successfully.")
+        # ---------------------------------------------------------
+        # NORMAL GEMINI CHAT
+        # ---------------------------------------------------------
         else:
-
-            st.chat_message(
-                "user"
-            ).markdown(prompt)
-
-            add_message_to_current_chat(
-                "user",
-                prompt,
-            )
+            st.chat_message("user").markdown(prompt)
+            add_message_to_current_chat("user", prompt)
 
             # Build PDF context
             global_pdf_text = ""
 
             if (
                 current_chat_data
-                and "pdf_texts_associated"
-                in current_chat_data
+                and "pdf_texts_associated" in current_chat_data
             ):
 
                 pdf_contents = []

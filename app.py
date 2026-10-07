@@ -1,39 +1,50 @@
 import os
 import streamlit as st
-from datetime import datetime, timedelta
-import pytz
-import tempfile
-from utils.model import model
-from sentence_transformers import SentenceTransformer
-from typing import List, Dict, Tuple
-from Software_Catalog import SOFTWARE_CATALOG
-from chat_db import init_db, load_chat_history, get_all_chat_ids, delete_chat
-from utils.pdf import extract_text_from_pdf, clear_uploads_directory
-from utils.chats import create_new_chat, select_chat, get_current_chat_data, get_current_gemini_session, add_message_to_current_chat
-from utils.installexe import install_exe, parse_software_name, download_and_install_software
-from utils.software_details import  scan_apps_and_storage, get_hardware_details
-from utils.speech import speak, listen_from_mic
-from streamlit.components.v1 import html
-import uuid
-import sys
-import ctypes
-import subprocess
-import google.generativeai as genai
-import PyPDF2
-import streamlit as st
+
 from datetime import datetime
-import pyttsx3
-import speech_recognition as sr
-import pytz
-import requests
-import tempfile
-import re
-import json
-import shutil
-import platform
+from typing import List, Dict, Tuple
+
+from utils.model import model
+
 from Software_Catalog import SOFTWARE_CATALOG, get_software_info
-from chat_db import init_db, save_message, load_chat_history, get_all_chat_ids
-from windows_tools.installed_software import get_installed_software
+
+from chat_db import (
+    init_db,
+    save_message,
+    load_chat_history,
+    get_all_chat_ids,
+    delete_chat,
+)
+
+from utils.pdf import (
+    extract_text_from_pdf,
+    clear_uploads_directory,
+)
+
+from utils.chats import (
+    create_new_chat,
+    select_chat,
+    get_current_chat_data,
+    get_current_gemini_session,
+    add_message_to_current_chat,
+)
+
+from utils.installexe import (
+    install_exe,
+    parse_software_name,
+    download_and_install_software,
+)
+
+from utils.software_details import (
+    scan_apps_and_storage,
+    get_hardware_details,
+)
+
+from utils.speech import (
+    speak,
+    listen_from_mic,
+)
+
 from streamlit.components.v1 import html
 
 
@@ -41,7 +52,10 @@ try:
     import psutil
 except ImportError:
     psutil = None
-    print("Warning: psutil library not found. Some system hardware details (RAM, CPU) will be unavailable.")
+    print(
+        "Warning: psutil library not found. "
+        "Some system hardware details will be unavailable."
+    )
     print("Install it with: pip install psutil")
 
 
@@ -50,255 +64,9 @@ st.set_page_config(page_title="ChatMate AI", page_icon="static/robot.png")
 
 
 
-st.set_page_config(page_title="ChatMate AI", page_icon="static/robot.png")
-
-
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-
-generation_config = {
-    "temperature": 0.7,
-    "top_p": 0.9,
-    "top_k": 100,
-    "max_output_tokens": 32768,
-}
-
-url =f'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={GEMINI_API_KEY}'
-
-
-model = genai.GenerativeModel(
-    model_name="gemini-1.5-flash",
-    generation_config=generation_config,
-)
-
-def extract_text_from_pdf(pdf_path):
-    text = ""
-    with open(pdf_path, 'rb') as file:
-        reader = PyPDF2.PdfReader(file)
-        for page in reader.pages:
-            text += page.extract_text()
-    return text
-
-def clear_uploads_directory(upload_dir="uploads/"):
-    for filename in os.listdir(upload_dir):
-        file_path = os.path.join(upload_dir, filename)
-        try:
-            if os.path.isfile(file_path):
-                os.remove(file_path)
-        except Exception as e:
-            st.error(f"Error removing {file_path}: {str(e)}")
-
-def install_exe(exe_file):
-    try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.exe') as tmp_exe_file:
-            tmp_exe_file.write(exe_file.getbuffer())
-            tmp_exe_path = tmp_exe_file.name
-
-        st.write(f"Starting the Installation: {tmp_exe_path}")
-        subprocess.run([tmp_exe_path], check=True)
-
-        os.remove(tmp_exe_path)
-        st.success(f"Installation completed successfully.")
-
-    except Exception as e:
-        st.error(f"An error occurred while installing the software: {e}")
-        st.error(f"Please try again.")
-
-def speak(text):
-    try:
-        
-        engine = pyttsx3.init()
-        engine.setProperty('rate', 150)
-        engine.setProperty('volume', 1.0)
-        voices = engine.getProperty('voices')
-        engine.setProperty('voice', voices[0].id)
-        engine.say(text)
-        engine.runAndWait()
-    except Exception as e:
-        st.error(f"TTS Error:{e}")
-    
-    
-# def audio_callback(recognizer, audio):
-#     try:
-#         text = recognizer.recognize_google(audio)
-#         st.session_state.spoken_text_from_mic = text
-#         st.success(f"Voice captured: \"{text}\"") # Give feedback
-#         # Stop listening after successful recognition
-#         if st.session_state.stop_listening_func:
-#             st.session_state.stop_listening_func(wait_for_stop=False)
-#             st.session_state.is_listening = False
-#             st.experimental_rerun() # Rerun to update button label and process text
-#     except sr.UnknownValueError:
-#         st.session_state.spoken_text_from_mic = "" # Clear if not understood
-#         st.warning("Could not understand audio. Please try again.")
-#         # Optionally, stop listening on UnknownValueError or let it continue
-#         if st.session_state.stop_listening_func:
-#              st.session_state.stop_listening_func(wait_for_stop=False)
-#              st.session_state.is_listening = False
-#              st.experimental_rerun()
-#     except sr.RequestError as e:
-#         st.session_state.spoken_text_from_mic = ""
-#         st.error(f"API error from Google Speech Recognition: {e}")
-#         if st.session_state.stop_listening_func:
-#             st.session_state.stop_listening_func(wait_for_stop=False)
-#             st.session_state.is_listening = False
-#             st.experimental_rerun()
-#     except Exception as e:
-#         st.session_state.spoken_text_from_mic = ""
-#         st.error(f"An unexpected error occurred during speech recognition: {e}")
-#         if st.session_state.stop_listening_func:
-#             st.session_state.stop_listening_func(wait_for_stop=False)
-#             st.session_state.is_listening = False
-#             st.experimental_rerun()
-    
-
-def listen_from_mic():
-    recognizer = sr.Recognizer()
-    
-    try:
-        with sr.Microphone() as source:
-            st.info("🎤 Listening...")
-            print(source,"this is source")
-            recognizer.adjust_for_ambient_noise(source)
-            audio = recognizer.listen(source, timeout=5,phrase_time_limit=10)
-            print(audio,"this is audio")
-            st.success("Voice Captured, processing...")
-            text=recognizer.recognize_google(audio)
-            return text
-    except sr.UnknownValueError:
-        st.error("Please Speak Again.")
-    except sr.RequestError as e:
-        st.error(f"API error:{e}")
-    except Exception as e:
-         st.error(f"Error like:{e}")
-    return None
-    # if st.session_state.is_listening: # Should not happen if button logic is correct
-    #     return
-
-    # recognizer = sr.Recognizer()
-    # microphone = sr.Microphone()
-
-    # try:
-    #     with microphone as source:
-    #         recognizer.adjust_for_ambient_noise(source, duration=0.5) # shorter duration
-
-    #     # Start listening in the background
-    #     # The audio_callback function will be called when speech is detected
-    #     stop_func = recognizer.listen_in_background(microphone, audio_callback, phrase_time_limit=10)
-    #     st.session_state.stop_listening_func = stop_func
-    #     st.session_state.is_listening = True
-    #     st.info("🎤 Listening... Press the button again to stop manually if needed.")
-    #     # We don't return text here; it's set in session_state by the callback
-    # except Exception as e:
-    #     st.error(f"Error starting microphone: {e}")
-    #     st.session_state.is_listening = False # Ensure state is correct on error
-
-# def stop_listening_manually():
-#     """Stops the background listener if it's active."""
-#     if st.session_state.is_listening and st.session_state.stop_listening_func:
-#         st.session_state.stop_listening_func(wait_for_stop=False) # Don't block here
-#         st.session_state.is_listening = False
-#         st.session_state.stop_listening_func = None # Clear the stop function
-#         st.session_state.spoken_text_from_mic = "" # Clear any partial result
-#         st.info("🎤 Listening stopped.")
-#     elif not st.session_state.is_listening:
-#         st.info("🎤 Not currently listening.")
-    
-
-def parse_software_name(command):
-    match = re.search(r'install (.+)', command, re.IGNORECASE)
-    if match:
-        return match.group(1).strip().lower()
-    return None
-
 def is_software_installed(path_check):
     return  os.path.exists(path_check) 
 
-def download_and_install_software(software_key):
-    
-    info = get_software_info(software_key)
-    if not info:
-        st.error("❌ The Software is not available in the catalohg.")
-        return
-
-    # Properly get software name (fallback to software_key if missing)
-    software_name = info.get("name", software_key).title()
-    exe_name = info.get("exe_name", software_key)  # You can define this in your catalog if needed
-
-    # ✅ Check if software is already installed
-    install_path = info.get("install_path")
-    if install_path and is_software_installed(install_path):
-        st.success(f"{software_name} is already available on this system.")
-        return
-
-
-    url = info["url"]
-    installer = info["installer"]
-    silent_flag = info.get("silent_flag", "")
-
-    st.info(f"⬇️ Downloading {software_name}...")
-    try:
-        with requests.get(url, stream=True) as r:
-            r.raise_for_status()
-            with open(installer, 'wb') as f:
-                for chunk in r.iter_content(chunk_size=8192):
-                    f.write(chunk)
-        st.success("📥 Download complete.")
-    except Exception as e:
-        st.error(f"❌ Download failed: {e}")
-        return
-
-    st.info("⚙️ Installing... (this may take a moment)")
-    try:
-        subprocess.run([installer, silent_flag], check=True)
-        st.success(f"✅ {software_name} installed successfully!")
-    except Exception as e:
-        st.error(f"❌ Installation failed: {e}")
-    finally:
-        if os.path.exists(installer):
-            os.remove(installer)
-            st.info("🧹 Installer removed after installation.")
-
-def create_new_chat():
-    chat_id = str(uuid.uuid4())
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    st.session_state.all_chats[chat_id]={
-        "id": chat_id,
-        "title": f"Chat - {timestamp}",
-        "messages": [],
-        "pdf_texts_associated":[],
-        "created_at": timestamp
-    }
-    st.session_state.current_chat_id = chat_id
-    st.session_state.gemini_chat_sessions[chat_id] = model.start_chat(history=[])
-    st.rerun()
-    
-def select_chat(chat_id):
-    st.session_state.current_chat_id = chat_id
-    if chat_id not in st.session_state.gemini_chat_sessions:
-        history_for_session = [
-            {"role": msg["role"], "parts": msg["parts"]}
-            for msg in st.session_state.all_chats[chat_id]["messages"]
-        ]
-        st.session_state.gemini_chat_sessions[chat_id] = model.start_chat(history = history_for_session)
-    st.rerun()
-    
-def get_current_chat_data():
-    if st.session_state.current_chat_id and st.session_state.current_chat_id in st.session_state.all_chats:
-        return st.session_state.all_chats[st.session_state.current_chat_id]
-    return None
-
-def get_current_gemini_session():
-    if st.session_state.current_chat_id and st.session_state.current_chat_id in st.session_state.gemini_chat_sessions:
-        return st.session_state.gemini_chat_sessions[st.session_state.current_chat_id]
-    return None
-
-def add_message_to_current_chat(role, content):
-    current_chat = get_current_chat_data()
-    if current_chat:
-        current_chat["messages"].append({"role":role, "parts": [content]})
-        save_message(current_chat["id"], role, content)
-        if role == "user" and len(current_chat["messages"]) == 1 and current_chat["title"].startswith("Chat - "):
-            current_chat["title"] = content[:30] + "..."
 
 def get_appx_packages():
     """Get System apps using powerShell"""
@@ -384,25 +152,7 @@ def get_folder_size(path):
                 pass
     return total_size
 
-# def get_apps_with_updates():
-#     try:
-#         result = subprocess.run(["choco", "outdated"], capture_output=True, text=True, check=True)
-#         output = result.stdout
-#         lines = output.strip().splitlines()
-#         app_names = []
-#         for line in lines:
-#             if not line.lower().startswith("package") and line.strip():
-#                 parts = line.split()
-#                 if parts:
-#                     app_names.append(parts[0].strip().lower())
-
-#         return set(app_names)
-#     except Exception as e:
-#         st.error(f"Error checking updates: {e}")
-#         return set()
-        
-        
-        
+     
 
 def get_last_updated_date(path):
     """Get the last modified timestamp of the install folder"""
@@ -412,120 +162,7 @@ def get_last_updated_date(path):
     except Exception:
         return "Unknown"
 
-
-def scan_apps_and_storage():
-    """Scanning and classifying apps with their storage details"""
-    system_apps = get_appx_packages()
-    downloaded_apps = get_win32_apps()
-    #updatable_apps = get_apps_with_updates()
     
-    system_apps = system_apps if system_apps is not None else []
-    downloaded_apps = downloaded_apps if downloaded_apps is not None else []
-    
-    system_total = 0
-    downloaded_total =0
-    system_list =[]
-    downloaded_list =[]
-    
-    # system app
-    for app in system_apps:
-        path = app.get("InstallLocation")
-        name = app.get("Name")
-        if path and os.path.exists(path):
-            size = get_folder_size(path)
-            last_updated = get_last_updated_date(path)
-            system_total += size
-            system_list.append({"App": name, "Size(MB)": f"{size/1e6: .2f}", "Last Updated":last_updated})
-            
-    # downloaded apps
-    for app in downloaded_apps:
-        path = app.get("InstallLocation")
-        name = app.get("DisplayName")
-        if name and path and os.path.exists(path):
-            size = get_folder_size(path)
-            downloaded_total +=size
-            last_updated=get_last_updated_date(path)
-            #update_status = "✅" if name and name.lower() in updatable_apps else "❌"
-            downloaded_list.append({"App": name, "Size(MB)": f"{size/1e6: .2f}","Last Updated":last_updated})
-        else:
-            downloaded_list.append({"App":name, "Size(MB)":"N/A","Last Updated":"N/A"})
-            
-    return system_list, downloaded_list, system_total, downloaded_total
-    
-# def restart_as_admin():
-#     if ctypes.windll.shell32.IsUserAnAdmin():
-#         st.success("✅ Already running as Administrator.")
-#         return
-    
-#     script_path = os.path.abspath(sys.argv[0])
-#     try:
-#         ctypes.windll.shell32.ShellExecuteW(
-#             None, "runas", sys.executable, f'"{script_path}"', None, 1
-#         )
-#         st.info("Attempting to restart with admin privileges...")
-#     except Exception as e:
-#         st.error(f"Failed to relaunch as admin: {e}")
-
-# ... (your existing imports like subprocess, streamlit as st, os are already there) ...
-
-# ... (your existing functions like extract_text_from_pdf, speak, etc.) ...
-# ... (your existing function get_last_updated_date) ...
-
-# def install_with_chocolatey(package_name):
-#     try:
-#         st.info(f"Installing {package_name} via Chocolatey...")
-
-#         result = subprocess.run(["choco", "install", package_name, "-y", "--force"], capture_output=True, text=True, shell=False) # Added --force for potential reinstall/fixing
-#         if result.returncode == 0:
-#             st.success(f"{package_name} installed successfully!")
-#             st.code(result.stdout) # Show output
-#         else:
-#             st.error(f"Installation failed for {package_name}:")
-#             st.subheader("Choco stdout:")
-#             st.code(result.stdout)
-#             st.subheader("Choco stderr:")
-#             st.code(result.stderr)
-#     except FileNotFoundError:
-#         st.error("Chocolatey command 'choco' not found. Please ensure Chocolatey is installed and in your system's PATH.")
-#         st.info("You might need to add 'C:\\ProgramData\\chocolatey\\bin' to your PATH environment variable, or restart your terminal/IDE after installation.")
-#     except Exception as e:
-#         st.error(f"An error occurred during Chocolatey installation: {e}")
-
-# def upgrade_with_chocolatey(package_name):
-#     try:
-#         st.info(f"Checking for updates and upgrading {package_name} via Chocolatey...")
-#         # Ensure choco is in PATH (optional)
-#         # if r"C:\ProgramData\chocolatey\bin" not in os.environ["PATH"]:
-#         #    os.environ["PATH"] += r";C:\ProgramData\chocolatey\bin"
-
-#         result = subprocess.run(["choco", "upgrade", package_name, "-y", "--force"], capture_output=True, text=True, shell=False) # Added --force
-#         if result.returncode == 0:
-#             if "0 packages upgraded" in result.stdout or "is the latest version available" in result.stdout:
-#                 st.success(f"{package_name} is already up to date.")
-#             else:
-#                 st.success(f"{package_name} updated successfully!")
-#             st.code(result.stdout) # Show output
-#         else:
-#             # Handle cases where the package might not be installed yet for an upgrade attempt
-#             if "This package is not installed" in result.stderr or "This package is not installed" in result.stdout:
-#                  st.warning(f"{package_name} is not installed. Try installing it first.")
-#             else:
-#                 st.error(f"Update failed for {package_name}:")
-#             st.subheader("Choco stdout:")
-#             st.code(result.stdout)
-#             st.subheader("Choco stderr:")
-#             st.code(result.stderr)
-#     except FileNotFoundError:
-#         st.error("Chocolatey command 'choco' not found. Please ensure Chocolatey is installed and in your system's PATH.")
-#         st.info("You might need to add 'C:\\ProgramData\\chocolatey\\bin' to your PATH environment variable, or restart your terminal/IDE after installation.")
-#     except Exception as e:
-#         st.error(f"An error occurred during Chocolatey upgrade: {e}")
-
-# ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-# END OF CHOCOLATEY FUNCTIONS
-# ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-# ... (your functions like scan_apps_and_storage, restart_as_admin, etc.) ...
 
 def get_hardware_details():
     details={}

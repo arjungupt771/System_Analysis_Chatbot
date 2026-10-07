@@ -1,19 +1,9 @@
-os
-uuid
-sys
-ctypes
-subprocess
-google.generativeai as genai
+google-generativeai
 PyPDF2
-streamlit as st
-from datetime import datetime
+streamlit
 pyttsx3
-speech_recognition as sr
+SpeechRecognition
 pytz
 requests
-tempfile
-re
-json
-shutil
-platform
-from streamlit.components.v1 import html
+python-dotenv
+psutil

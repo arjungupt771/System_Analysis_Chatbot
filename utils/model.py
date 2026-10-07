@@ -1,7 +1,20 @@
-import google.generativeai as genai
+import os
 
-api_key='AIzaSyC3N6bbu0b-Gd3c1DIQCeJLwawSwjcH50c'
-genai.configure(api_key=api_key)
+import google.generativeai as genai
+from dotenv import load_dotenv
+
+
+load_dotenv()
+
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
+if not GEMINI_API_KEY:
+    raise RuntimeError(
+        "GEMINI_API_KEY is not set. "
+    )
+
+genai.configure(api_key=GEMINI_API_KEY)
+
 
 generation_config = {
     "temperature": 0.7,
@@ -9,8 +22,6 @@ generation_config = {
     "top_k": 100,
     "max_output_tokens": 32768,
 }
-
-url =f'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=api_key'
 
 
 model = genai.GenerativeModel(

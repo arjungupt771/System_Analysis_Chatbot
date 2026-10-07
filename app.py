@@ -1,5 +1,4 @@
 import os
-<<<<<<< HEAD
 import streamlit as st
 from datetime import datetime, timedelta
 import pytz
@@ -15,7 +14,6 @@ from utils.installexe import install_exe, parse_software_name, download_and_inst
 from utils.software_details import  scan_apps_and_storage, get_hardware_details
 from utils.speech import speak, listen_from_mic
 from streamlit.components.v1 import html
-=======
 import uuid
 import sys
 import ctypes
@@ -38,26 +36,24 @@ from chat_db import init_db, save_message, load_chat_history, get_all_chat_ids
 from windows_tools.installed_software import get_installed_software
 from streamlit.components.v1 import html
 
->>>>>>> 156032c781034159b31bebd3bffa2a6980efe253
+
 try:
     import psutil
 except ImportError:
     psutil = None
     print("Warning: psutil library not found. Some system hardware details (RAM, CPU) will be unavailable.")
     print("Install it with: pip install psutil")
-<<<<<<< HEAD
 
 
 
 st.set_page_config(page_title="ChatMate AI", page_icon="static/robot.png")
 
 
-=======
 
 st.set_page_config(page_title="ChatMate AI", page_icon="static/robot.png")
 
-api_key='AIzaSyC3N6bbu0b-Gd3c1DIQCeJLwawSwjcH50c'
-genai.configure(api_key=api_key)
+
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
 generation_config = {
     "temperature": 0.7,
@@ -66,7 +62,7 @@ generation_config = {
     "max_output_tokens": 32768,
 }
 
-url =f'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=api_key'
+url =f'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={GEMINI_API_KEY}'
 
 
 model = genai.GenerativeModel(
@@ -637,7 +633,7 @@ def get_hardware_details():
 
     return details
 
->>>>>>> 156032c781034159b31bebd3bffa2a6980efe253
+
 def main():
     init_db()  # Ensure the database is set up
     clear_uploads_directory()
@@ -649,28 +645,9 @@ def main():
         
     if "gemini_chat_sessions" not in st.session_state:
         st.session_state.gemini_chat_sessions={}
-<<<<<<< HEAD
             
     if "spoken_text_from_mic" not in st.session_state:
         st.session_state.spoken_text_from_mic=""
-=======
-        
-    # if "is_listening" not in st.session_state:
-    #     st.session_state.is_listening = False
-    
-    if "spoken_text_from_mic" not in st.session_state:
-        st.session_state.spoken_text_from_mic=""
-    
-    # if "mic_recognizer" not in st.session_state: # To hold the recognizer and mic instances
-    #     st.session_state.mic_recognizer = None
-        
-    # if "mic_source" not in st.session_state:
-    #     st.session_state.mic_source = None
-        
-    # if "stop_listening_func" not in st.session_state: # For background listening stop
-    #     st.session_state.stop_listening_func = None
-    
->>>>>>> 156032c781034159b31bebd3bffa2a6980efe253
 
     ist = pytz.timezone('Asia/Kolkata')
     now = datetime.now()
@@ -682,7 +659,6 @@ def main():
     st.markdown(f"**Current Date & Time (IST):** {current_time}")
     st.markdown("Ask, upload, and discover—AI at your service.")
     st.markdown("~ Arjun Gupta", unsafe_allow_html=True)
-<<<<<<< HEAD
            
     clear_uploads_directory()
     global_pdf_text=""
@@ -727,12 +703,7 @@ def main():
             "messages": messages,
             "pdf_texts_associated": [],
             "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")  # you could also store this in DB later
-        }
-
-
-=======
-    
-
+        }    
 
             
     
@@ -824,7 +795,6 @@ def main():
     #     st.sidebar.write("No chats to delete.")
 
 
->>>>>>> 156032c781034159b31bebd3bffa2a6980efe253
     st.sidebar.header("Upload PDF Documents")
     pdf_files = st.sidebar.file_uploader("Upload PDFs (Max 10MB each)", type=["pdf"], accept_multiple_files=True, key =f"pdf_uploader_{st.session_state.current_chat_id or 'global'}")
     if pdf_files:
@@ -887,7 +857,7 @@ def main():
     col1, col2 = st.columns([1,1])
     with col1:
         speak_clicked = st.button("🎤 Speak", key="speak_btn")
-<<<<<<< HEAD
+
     with col2:
         scan_apps_clicked = st.button("🖥️ Scan Apps", key="scan_apps_btn")
     
@@ -944,7 +914,6 @@ def main():
                 speak(response.text)
                 add_message_to_current_chat("content",response.text)
 
-=======
         # speak_clicked = "🛑 Stop Listening" if st.session_state.get('is_listening', False) else "🎤 Speak"
         # if st.button(speak_button_label, key="speak_toggle_button_main"): # New key
         #     if not st.session_state.get('is_listening', False):
@@ -1012,7 +981,6 @@ def main():
                 speak(response.text)
                 add_message_to_current_chat("content",response.text)
 
->>>>>>> 156032c781034159b31bebd3bffa2a6980efe253
         
         pdf_context_for_prompt = ""
         global_pdf_text=""
@@ -1025,8 +993,8 @@ def main():
         
 
         context = f"Based on the documents:\n{global_pdf_text}\n\nUser Question: {spoken_text}" if global_pdf_text else spoken_text
-<<<<<<< HEAD
-=======
+
+
         # if current_gemini_session:
         #     try:
         #         with st.spinner("ChatMate AI is thinking..."):
@@ -1041,7 +1009,6 @@ def main():
         # else:
         #     st.warning("No active Gemini session to send the message to.")
                 
->>>>>>> 156032c781034159b31bebd3bffa2a6980efe253
                 
         try:
              response = current_gemini_session.send_message(context)
@@ -1052,12 +1019,8 @@ def main():
         except Exception as e:
              st.error(f"❌ Error processing your request: {e}")
              st.rerun()
-<<<<<<< HEAD
- 
-=======
 
-    
->>>>>>> 156032c781034159b31bebd3bffa2a6980efe253
+ 
     if scan_apps_clicked:
         with st.spinner("Scanning installed apps and claculating storage..."):
              system_list, downloaded_list, system_total, downloaded_total = scan_apps_and_storage()
@@ -1077,33 +1040,28 @@ def main():
                 label ="Total System Storage(ROM)",
                 value=f"{total_storage:.2f} GB" if isinstance(total_storage, (int, float)) else "N/A"
             )
+
             if psutil: # Check if psutil is available
                 cpu_physical_cores = hardware_details.get('cpu_physical_cores')
                 cpu_logical_cores = hardware_details.get('cpu_logical_cores')
                 cpu_usage_percent = hardware_details.get('cpu_usage_percent')
                 st.metric(
                     label = "CPU Physical Cores",
-                    value=str(cpu_physical_cores) if cpu_physical_cores is not None else "N/A"
+                    value=(str(cpu_physical_cores) if cpu_physical_cores is not None else "N/A")
                 )
                 st.metric(
                     label="CPU Logical Cores",
-                    value=str(cpu_logical_cores) if cpu_logical_cores is not None else "N/A"
+                    value=(str(cpu_logical_cores) if cpu_logical_cores is not None else "N/A")
                 )
                 st.metric(
                     label="CPU Current Usage",
                     # Format as float if it's a number, otherwise display "N/A"
                     value=(f"{cpu_usage_percent:.1f} %" if isinstance(cpu_usage_percent, (int, float)) else "N/A")
                 )
-<<<<<<< HEAD
+
             else:
                 st.caption("Detailed CPU info requires 'psutil'.")
 
-=======
-                # st.metric(label="CPU Physical Cores", value=str(hardware_details.get('cpu_physical_cores', 'N/A')))
-                # st.metric(label="CPU Logical Cores", value=str(hardware_details.get('cpu_logical_cores', 'N/A')))
-                # st.metric(label="CPU Current Usage", value=f"{hardware_details.get('cpu_usage_percent', 'N/A')} %")
-            else:
-                st.caption("Detailed CPU info requires 'psutil'.")
 
 
         # with col_hw2:
@@ -1117,7 +1075,6 @@ def main():
         #     st.metric(label="C: Drive Total Space", value=f"{hardware_details.get('disk_c_total_gb', 0):.2f} GB")
         #     st.metric(label="C: Drive Used Space", value=f"{hardware_details.get('disk_c_used_gb', 0):.2f} GB")
         #     st.metric(label="C: Drive Free Space", value=f"{hardware_details.get('disk_c_free_gb', 0):.2f} GB")
->>>>>>> 156032c781034159b31bebd3bffa2a6980efe253
         with col_hw2:
         
     # RAM Metrics - with proper handling for 'N/A' or None
@@ -1189,12 +1146,8 @@ def main():
                 })
             if disk_data_for_table:
                 st.table(disk_data_for_table)
-<<<<<<< HEAD
-=======
-            # else: # Optional: message if no other disks found
-                # st.caption("No additional disk partitions found or psutil not available for detailed listing.")
 
->>>>>>> 156032c781034159b31bebd3bffa2a6980efe253
+
 
         st.markdown("---") # Visual separator
 
@@ -1237,8 +1190,7 @@ def main():
             except Exception as e:
                 st.error(f"An error occurred: {str(e)}")
             st.rerun()
-<<<<<<< HEAD
-=======
+
             
     # with st.sidebar.expander("Chocolatey Software Management", expanded = False):
     #     st.warning(
@@ -1280,7 +1232,6 @@ def main():
     # # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
     # # END OF CHOCOLATEY UI SECTION
     # # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
->>>>>>> 156032c781034159b31bebd3bffa2a6980efe253
 
     if not st.session_state.current_chat_id:
         st.info("Select a chat from the sidebar or create a new one to begin.")
@@ -1290,8 +1241,5 @@ if __name__ == "__main__":
     if not os.path.exists("Uploads"):
         os.makedirs("uploads")
     clear_uploads_directory()
-<<<<<<< HEAD
     main()
-=======
-    main()
->>>>>>> 156032c781034159b31bebd3bffa2a6980efe253
+

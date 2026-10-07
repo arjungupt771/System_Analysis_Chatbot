@@ -591,34 +591,6 @@ System_Analysis_Chatbot/
 ├── .gitignore
 ├── requirements.txt
 └── README.md
----
-
-# 🧪 Testing
-
-The project includes a Windows-focused automated test suite.
-
-Windows-specific behavior is mocked where necessary so the implementation can be tested safely from the development environment.
-
-
-Run:
-
-```bash
-pytest -q
-
-
-### Run tests
-
-```bash
-pytest -q
-```
-
-### Current result
-
-```text
-28 passed
-```
-
-> **28/28 tests currently pass.**
 
 ---
 

@@ -541,21 +541,17 @@ Platform checks prevent these actions from executing on unsupported operating sy
 System_Analysis_Chatbot/
 │
 ├── app.py
-├── api_server.py
-├── chat_db.py
-├── Software_Catalog.py
 │
 ├── utils/
+│   ├── chat_db.py
 │   ├── chats.py
 │   ├── command_router.py
 │   ├── installexe.py
 │   ├── model.py
-│   ├── pdf.py
 │   ├── process_analysis.py
 │   ├── safety.py
 │   ├── software_details.py
 │   ├── software_health.py
-│   ├── speech.py
 │   ├── startup_analysis.py
 │   ├── storage_analysis.py
 │   ├── system_diagnosis.py
@@ -564,7 +560,6 @@ System_Analysis_Chatbot/
 │   └── windows_actions.py
 │
 ├── tests/
-│   ├── __init__.py
 │   ├── test_command_router.py
 │   ├── test_windows_process_analysis.py
 │   ├── test_windows_startup.py
@@ -572,25 +567,46 @@ System_Analysis_Chatbot/
 │   ├── test_windows_actions.py
 │   └── test_windows_action_execution.py
 │
-├── static/
-│   └── robot.png
-│
-├── templates/
-│   └── index.html
-│
-├── .streamlit/
-│   └── config.toml
-│
-├── .devcontainer/
-│   └── devcontainer.json
-│
-├── .vscode/
-│   └── settings.json
-│
 ├── .env.example
 ├── .gitignore
 ├── requirements.txt
 └── README.md
+```
+
+---
+
+# 🧪 Testing
+
+The project includes a Windows-focused automated test suite.
+
+Windows-specific behavior is mocked where necessary so the implementation can be tested safely from the development environment.
+
+### Test coverage includes
+
+- Command routing
+- Process analysis
+- Startup analysis
+- Storage analysis
+- Windows URL actions
+- Windows application launching
+- Application allowlisting
+- Safety confirmation
+- Tool execution
+- Error handling
+
+### Run tests
+
+```bash
+pytest -q
+```
+
+### Current result
+
+```text
+28 passed
+```
+
+> **28/28 tests currently pass.**
 
 ---
 
